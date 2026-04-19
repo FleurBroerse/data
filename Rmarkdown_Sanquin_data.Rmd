@@ -1,0 +1,116 @@
+---
+title: "Sanquin_data"
+author: "Fleur Broerse"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r library, include=FALSE}
+library(tidyverse)
+```
+
+```{r data 1, echo=TRUE}
+donor_info <- data.frame( 
+  
+  Donor_ID = c("D101", "D102", "D103", "D104", "D105", "D106"), 
+  
+  Bloedgroep = c("A+", "O-", "B+", "A+", "AB-", "O+"), 
+  
+  Gewicht_kg = c(72, 85, 49, 91, 66, 105), 
+  
+  Regio_Noord = c("Ja", "Nee", "Nee", "Ja", "Nee", "Nee"), 
+  
+  Regio_Zuid = c("Nee", "Ja", "Nee", "Nee", "Nee", "Ja"), 
+  
+  Regio_West = c("Nee", "Nee", "Ja", "Nee", "Ja", "Nee") 
+  
+) %>%
+  pivot_longer(cols=4:6,
+               names_to="Regio",
+               values_to="Bloeddonatie_status") %>%
+  mutate(Regio=case_when(Regio =="Regio_Noord" ~ "Noord",
+                         Regio == "Regio_Zuid" ~ "Zuid",
+                         Regio == "Regio_West" ~ "West")) %>%
+  mutate(Gewicht_kg=as.character(Gewicht_kg)) %>%
+  mutate(Gewicht_kg=c(rep("Normaal",6),rep("Ondergewicht",3),rep("Overgewicht",3),rep("Normaal",3),rep("Overgewicht",3)))
+
+  donor_info2 <- donor_info %>% 
+  filter(Bloeddonatie_status == "Ja") %>%
+  group_by(Bloedgroep, Regio) %>%
+  count(Bloeddonatie_status) %>%
+  rename("Aantal_x_donaties"=4)
+knitr::kable(donor_info)
+```
+
+```{r data 2 & 3, echo=TRUE}
+
+donatie_logs <- data.frame( 
+  
+  Donor_ID = c("D101", "D101", "D102", "D103", "D104", "D104", "D107"), 
+  
+  Datum = as.Date('2023-01-01') + c(0, 120, 10, 5, 30, 150, 20), 
+  
+  Volume_ml = c(500, 480, 0, 1200, 510, 495, 500), # Bevat uitschieters (0 en 1200) 
+  
+  Hb_waarde_1 = c(9.1, 8.8, 7.2, NA, 9.5, 9.3, 8.5), 
+  
+  Hb_waarde_2 = c(9.2, 8.7, 7.1, 6.5, 9.4, 9.2, 8.4) 
+  
+) %>%
+  filter(!(Volume_ml %in% c(0,1200)))
+
+voorraad_norm <- data.frame( 
+  
+  Bloedgroep = c("A+", "O-", "B+", "O+", "AB-"), 
+  
+  Target_Liters = c(100, 150, 50, 200, 25) 
+  
+) 
+knitr::kable(donatie_logs)
+knitr::kable(voorraad_norm)
+```
+
+```{r join, echo=TRUE}
+join_data <- donatie_logs %>% 
+             bind_cols(voorraad_norm) %>%
+             pivot_longer(cols=4:5,
+                          names_to="HB_waarde",
+                          values_to="values") %>%
+            rename("hb_waarde" = 7) %>%
+            select(-HB_waarde) %>%
+            mutate(Donor_ID=case_when(
+            row_number() ==3 ~"D102",
+            row_number() ==4 ~"D102",
+            row_number() ==7 ~"D105",
+            row_number() ==8 ~"D105",
+            TRUE ~ Donor_ID)) %>%
+            mutate(Regio=c(rep("Noord",4),rep("Zuid",4),rep("West",2))) %>%
+           relocate(Regio, .after=Donor_ID) %>%
+           arrange(Regio,
+                   desc(Datum))%>%
+          distinct(Donor_ID, Datum, .keep_all=TRUE)
+knitr::kable(join_data)
+```
+
+```{r plot, echo=TRUE}
+plot <- join_data %>%
+        ggplot(mapping=aes(x=Regio,
+                           y=Bloedgroep,
+                           fill=(Target_Liters))) +
+       geom_col(position=position_dodge(),
+                color="black") +
+       theme_classic() +
+       theme(plot.title=element_text(hjust=0.5,
+                                     face="bold",
+                                     family="sans"),
+            plot.subtitle=element_text(hjust=0.5,
+                                    face="bold",
+                                    family="sans")) +
+           labs(title="Bloedvoorrad per regio",
+                subtitle="Noord/Zuid/West",
+                x="Regio",
+                y="Bloedvoorraad in liters",
+                fill="Voorraad liters")
+print(plot)
+```
+
